@@ -1,8 +1,7 @@
 import requests
 import json
 import re
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from bs4 import BeautifulSoup
+import time
 
 def get_job_sub_category(category):
     if category == "science-medicine":
@@ -23,7 +22,8 @@ def get_job_sub_category(category):
 def main():
     base_url = "https://www.goarmy.com"
     json_url = f"{base_url}/bin/aemservlet/cmtjobs.en.json"
-    
+    SCRIPT_TIMEOUT_SECONDS = 60  # 60 seconds for fail-fast
+
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
     }
@@ -43,60 +43,40 @@ def main():
         return
 
     jobs = []
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
+    script_start_time = time.time()
+    
+    print("\n--- Starting to process job data ---")
+    for i, job_data_item in enumerate(jobs_data): # Renamed job_data to job_data_item
+        if time.time() - script_start_time > SCRIPT_TIMEOUT_SECONDS:
+            print(f"\n--- Script timed out after {SCRIPT_TIMEOUT_SECONDS // 60} minutes. Exiting. ---")
+            break
 
-        print("\n--- Starting to scrape individual job pages ---")
-        for i, job_data in enumerate(jobs_data):
-            # Using the correct keys discovered from inspection
-            job_title = job_data.get("mos_title")
-            job_code = job_data.get("moscode")
-            job_category = job_data.get("category")
+        job_title = job_data_item.get("mos_title")
+        job_code = job_data_item.get("moscode")
+        job_category = job_data_item.get("category")
+        
+        # Get description directly from the initial JSON data
+        description = job_data_item.get("MOS job overview", "N/A") 
 
-            if not all([job_title, job_code, job_category]):
-                print(f"  -> INFO: Skipping record {i+1} due to missing essential data.")
-                continue
+        if not all([job_title, job_code, job_category]):
+            print(f"  -> INFO: Skipping record {i+1} due to missing essential data.")
+            continue
 
-            job_sub_category = get_job_sub_category(job_category)
+        job_sub_category = get_job_sub_category(job_category)
+        sanitized_title = re.sub(r'[/,]', '', job_title.lower()).replace(' ', '-')
+        job_url = f"{base_url}/careers-and-jobs/{job_category}/{job_sub_category}/{job_code.lower()}-{sanitized_title}"
 
-            sanitized_title = re.sub(r'[/,]', '', job_title.lower()).replace(' ', '-')
-            job_url = f"{base_url}/careers-and-jobs/{job_category}/{job_sub_category}/{job_code.lower()}-{sanitized_title}"
+        print(f"({i+1}/{len(jobs_data)}) Processing: {job_title}...")
+        print(f"  -> URL: {job_url}") # Still useful for verification
 
-            print(f"({i+1}/{len(jobs_data)}) Scraping: {job_title}...")
-            try:
-                page.goto(job_url, wait_until='domcontentloaded')
-                page.wait_for_selector("div.job-detail__description", timeout=10000)
-                
-                html_content = page.content()
-                job_soup = BeautifulSoup(html_content, "html.parser")
-
-                description_container = job_soup.find("div", class_="job-detail__description")
-                description = description_container.text.strip() if description_container else "N/A"
-
-                jobs.append({
-                    "title": job_title,
-                    "code": job_code,
-                    "category": job_category,
-                    "sub_category": job_sub_category,
-                    "url": job_url,
-                    "description": description
-                })
-
-            except PlaywrightTimeoutError:
-                print(f"  -> Timeout error on {job_url} - could not find description container.")
-                jobs.append({
-                    "title": job_title,
-                    "code": job_code,
-                    "category": job_category,
-                    "sub_category": job_sub_category,
-                    "url": job_url,
-                    "description": "ERROR: Timed out waiting for description."
-                })
-            except Exception as e:
-                print(f"  -> An error occurred while processing {job_url}: {e}")
-
-        browser.close()
+        jobs.append({
+            "title": job_title,
+            "code": job_code,
+            "category": job_category,
+            "sub_category": job_sub_category,
+            "url": job_url,
+            "description": description
+        })
 
     with open("jobs.json", "w") as f:
         json.dump(jobs, f, indent=4)
