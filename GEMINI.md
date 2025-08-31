@@ -4,7 +4,9 @@
 
 This project is a web scraper written in Python. The goal is to scrape job data from the U.S. Army careers website: `https://www.goarmy.com/careers-and-jobs/browse-jobs`.
 
-The website loads job data dynamically from a JSON file. However, the server has anti-scraping measures in place that block direct requests to this file.
+We have found that the Army job data is available directly in a JSON file at `https://www.goarmy.com/careers-and-jobs/browse-jobs.jobs.json`. This file contains a list of job objects, each with `jobCategory`, `jobSubCategory`, `jobCode`, `jobTitle`, and `jobDescription`.
+
+For Air Force jobs, the website `https://www.airforce.com/careers/career-finder` lists all jobs. However, we have determined that the job data is not available in a direct JSON file and is likely loaded dynamically. Therefore, a headless browser (like Selenium or Puppeteer) will be required to scrape this data.
 
 ## Building and Running
 
@@ -26,17 +28,9 @@ The main script is `scraper.py`.
 
 ### Scraping Logic
 
-The scraper first attempts to download a JSON file from `https://www.goarmy.com/careers-and-jobs/browse-jobs.jobs.json`. This file contains a list of all the jobs.
-
-For each job in the JSON file, the scraper constructs a URL to the detailed job page. The URL has the following format:
+The Army scraper now directly downloads the `jobs.json` file. For each job in the JSON file, the scraper constructs a URL to the detailed job page. The URL has the following format:
 `https://www.goarmy.com/careers-and-jobs/{jobCategory}/{jobSubCategory}/{jobCode}-{jobTitle}`
 
 The `jobSubCategory` is determined by a mapping from the `jobCategory`.
 
 The scraper then fetches the detailed job page and parses the HTML to extract the job description.
-
-### Anti-Scraping Measures
-
-The server blocks direct requests to the JSON file. The scraper attempts to bypass this by setting the `User-Agent` and `X-Requested-With` headers in the HTTP request.
-
-**TODO:** The current implementation is still being blocked. A headless browser like Selenium or Puppeteer may be required to successfully scrape the data.
